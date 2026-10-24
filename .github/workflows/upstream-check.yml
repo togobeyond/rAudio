@@ -1,0 +1,59 @@
+name: Upstream sync check
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/rern/rAudio.git
+      - name: Fetch upstream main
+        run: git fetch upstream main
+      - name: Compare
+        id: compare
+        run: |
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/main)
+          echo "local=$LOCAL" >> $GITHUB_OUTPUT
+          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
+          if [ "$LOCAL" != "$UPSTREAM" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create issue if changed
+        if: steps.compare.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Upstream rern/rAudio main has new commits';
+            const body = `Local HEAD: ${process.env.LOCAL}\nUpstream main: ${process.env.UPSTREAM}\n\nPlease review and merge/rebase.`;
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['upstream-sync']
+            });
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['upstream-sync']
+              });
+            }
+        env:
+          LOCAL: ${{ steps.compare.outputs.local }}
+          UPSTREAM: ${{ steps.compare.outputs.upstream }}
