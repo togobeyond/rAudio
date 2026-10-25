@@ -547,12 +547,21 @@ screenoff )
 	DISPLAY=:0 xset dpms force off
 	;;
 shairport )
+	mkdir -p $dirshm/airplay
 	if ! playerActive airplay; then
 		echo airplay > $dirshm/player
 		pushStatus
 		playerStart
 	fi
+	echo play > $dirshm/airplay/state # AirPlay 2 sends no metadata - set from session
+	date +%s > $dirshm/airplay/start
+	pushStatus
 	systemctl start shairport
+	;;
+shairportstop )
+	echo stop > $dirshm/airplay/state
+	playerStop
+	pushStatus
 	;;
 shareddataupdate )
 	systemctl restart mpd

@@ -108,14 +108,15 @@ if [[ $player != mpd && $player != upnp ]]; then
 
 	airplay )
 		dirairplay=$dirshm/airplay
-		Time=$( getContent $dirairplay/Time )
+		Time=$( getContent $dirairplay/Time 0 )
 		state=$( getContent $dirairplay/state stop )
 		if [[ $state == play ]]; then
-			start=$( < $dirairplay/start )
+			start=$( getContent $dirairplay/start 0 )
 			elapsed=$(( $( date +%s ) - start + 1 ))
 		else
-			elapsed=$( < $dirairplay/elapsed )
+			elapsed=$( getContent $dirairplay/elapsed 0 )
 		fi
+		title=$( getContent $dirairplay/Title )
 ########
 		status+='
 , "Album"     : "'$( getContent $dirairplay/Album )'"
@@ -127,7 +128,7 @@ if [[ $player != mpd && $player != upnp ]]; then
 , "state"     : "'$state'"
 , "Time"      : '$Time'
 , "timestamp" : '$( date +%s%3N )'
-, "Title"     : "'$( getContent $dirairplay/Title )'"'
+, "Title"     : "'${title:-AirPlay}'"'
 		;;
 	bluetooth )
 ########
