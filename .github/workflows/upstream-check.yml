@@ -25,35 +25,84 @@ jobs:
         run: |
           LOCAL=$(git rev-parse HEAD)
           UPSTREAM=$(git rev-parse upstream/main)
-          echo "local=$LOCAL" >> $GITHUB_OUTPUT
-          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
-          if [ "$LOCAL" != "$UPSTREAM" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "commits<<UPSTREAM_COMMITS"
+              git log --oneline --no-decorate -n 50 "HEAD..upstream/main"
+              echo "UPSTREAM_COMMITS"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "commits=" >> "$GITHUB_OUTPUT"
+            echo "SYNCED: local main already contains upstream/main" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Create issue if changed
+      - name: Create or update issue if upstream is ahead
         if: steps.compare.outputs.changed == 'true'
         uses: actions/github-script@v8
-        with:
-          script: |
-            const title = 'Upstream rern/rAudio main has new commits';
-            const body = `Local HEAD: ${process.env.LOCAL}\nUpstream main: ${process.env.UPSTREAM}\n\nPlease review and merge/rebase.`;
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: ['upstream-sync']
-            });
-            if (issues.data.length === 0) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ['upstream-sync']
-              });
-            }
         env:
           LOCAL: ${{ steps.compare.outputs.local }}
           UPSTREAM: ${{ steps.compare.outputs.upstream }}
+          BEHIND: ${{ steps.compare.outputs.behind }}
+          COMMITS: ${{ steps.compare.outputs.commits }}
+        with:
+          script: |
+            const title = 'Upstream rern/rAudio main has new commits';
+            const body = [
+              `Local HEAD: ${process.env.LOCAL}`,
+              `Upstream main: ${process.env.UPSTREAM}`,
+              `Upstream commits not in local main: ${process.env.BEHIND}`,
+              '',
+              '```',
+              process.env.COMMITS || '(none)',
+              '```',
+              '',
+              'Please review and merge/rebase.'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issues = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: ['upstream-sync']
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({ owner, repo, title, body, labels: ['upstream-sync'] });
+            } else {
+              const issue = issues.data[0];
+              if (issue.body !== body) {
+                await github.rest.issues.update({ owner, repo, issue_number: issue.number, body });
+              }
+            }
+      - name: Close issue if synced
+        if: steps.compare.outputs.changed == 'false'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issues = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: ['upstream-sync']
+            });
+            for (const issue of issues.data) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: 'Local main now contains upstream/main — closing automatically.'
+              });
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
