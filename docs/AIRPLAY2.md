@@ -541,6 +541,31 @@ docker run --rm --platform linux/arm/v7 -v "$PWD/rAudio-status:/src" -w /src ala
 2. 문제 지속 시 `status.armv7h`를 이전 커밋 버전으로 되돌림
 3. 브랜치 revert 후 이미지 재빌드
 
+### 9.1 이미지 빌드/설치 경로 (RPi 2)
+
+rOS 이미지 빌드(`create.sh` → 첫 부팅 `create-ros.sh`)는 **rern/rAudio를 고정 URL로 받아온다.** 포크를 설치하려면 rOS도 포크해야 한다.
+
+```bash
+# create.sh
+https_raudio=https://github.com/togobeyond/rAudio     # common.sh
+https://github.com/rern/$repo/archive/...            # create-ros.sh → togobeyond/rAudio
+```
+
+`create-ros.sh`는 `install.sh`를 실행하지 않는다. 따라서 새 이미지에는 아래를 **rOS에 직접 반영**해야 한다.
+
+| 대상 | 값 |
+|---|---|
+| `create-ros.sh` `packages` | `nqptp` 추가 |
+| `etc/systemd/system/shairport.service` | `ExecStart=/srv/http/bash/status-shairport.sh` |
+| `etc/shairport-sync.conf` | `dbus_service_bus = "system"` 유지 |
+
+- `RELEASE`는 `togobeyond/rAudio`의 태그(예: `i20261030`)를 지정한다.
+- `create-ros.sh`가 `status.armv7h` → `status`로 이동시키므로, 포크 태그에 **새 바이너리가 커밋되어 있어야** 한다.
+- 반대로 **기존 운영 기기 업데이트**는 `install.sh`가 위 설정을 마이그레이션한다.
+
+> `install.sh`를 수동 실행하면 `r1` 애드온 `installurl`(rern/rAudio)에서 다시 받아와 포크 내용을 덮어쓴다. 포크 이미지에서는 `install.sh`를 실행하지 않는다.
+
+
 ---
 
 ## 10. Definition of Done
