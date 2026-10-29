@@ -43,6 +43,23 @@ shairport-sync (D-Bus: org.gnome.ShairportSync)
 
 ---
 
+## 0.1 이 브랜치에서 이미 반영된 것
+
+| 위치 | 내용 | 상태 |
+|---|---|---|
+| `rAudio-status` `feature/airplay2` | Metadata 조회 대상 수정(네이티브 + MPRIS fallback), ProgressString/SourceFormat 방어, idle=stop, Title 기본값 | 완료 |
+| `rAudio` `status.armv7h` | 위 수정으로 armv7h 재빌드(Docker+qemu) | 완료 |
+| `rAudio` `common.sh` | `playerStop()` 자기 stop 문제 | 완료 |
+| `rAudio` `status-shairport.sh` | `Stopped` 시 exit, timestamp/elapsed 가드 | 완료 |
+| `rAudio` `settings/features.sh` | AirPlay Off 시 `nqptp` 정리 | 완료 |
+| `rAudio` `install.sh` | `nqptp` 설치 보장(업그레이드) | 완료 |
+| `rAudio` UI | "AirPlay 2" 라벨/도움말 | 완료 |
+| `rOS` `feature/airplay2` | 포크 URL, `nqptp` 패키지, `status-shairport.sh` unit | 완료 |
+| 실기기 검증 (RPi 2) | 재생/상태/메타데이터/회귀 | **대기** |
+| aarch64 / armv6h 바이너리 | 동일 수정 반영 | 미완(armv7h만) |
+
+---
+
 ## 1. 목표와 범위
 
 ### 1.1 목표
