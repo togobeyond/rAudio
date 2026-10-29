@@ -545,25 +545,40 @@ docker run --rm --platform linux/arm/v7 -v "$PWD/rAudio-status:/src" -w /src ala
 
 rOS 이미지 빌드(`create.sh` → 첫 부팅 `create-ros.sh`)는 **rern/rAudio를 고정 URL로 받아온다.** 포크를 설치하려면 rOS도 포크해야 한다.
 
+이 저장소 기준 준비된 포크:
+
+| 저장소 | 브랜치/태그 | 변경 |
+|---|---|---|
+| `togobeyond/rAudio` | `feature/airplay2`, 태그 `i20261030` | 본 작업 |
+| `togobeyond/rAudio-status` | `feature/airplay2` | C++ 수정 |
+| `togobeyond/rOS` | `feature/airplay2` | 아래 4가지 |
+
+rOS 변경 내용:
+
 ```bash
-# create.sh
-https_raudio=https://github.com/togobeyond/rAudio     # common.sh
-https://github.com/rern/$repo/archive/...            # create-ros.sh → togobeyond/rAudio
+# common.sh
+https_raudio=https://github.com/togobeyond/rAudio
+https_ros=https://github.com/togobeyond/rOS/raw/$BRANCH
+
+# create.sh (common.sh source 경로)
+. <( curl -sL https://github.com/togobeyond/rOS/raw/$BRANCH/common.sh )
+
+# create-ros.sh
+#  - rAudio → togobeyond, rOS → togobeyond, rAudio-assets → rern
+#  - packages 에 nqptp 추가
+
+# etc/systemd/system/shairport.service
+ExecStart=/srv/http/bash/status-shairport.sh
 ```
 
-`create-ros.sh`는 `install.sh`를 실행하지 않는다. 따라서 새 이미지에는 아래를 **rOS에 직접 반영**해야 한다.
-
-| 대상 | 값 |
-|---|---|
-| `create-ros.sh` `packages` | `nqptp` 추가 |
-| `etc/systemd/system/shairport.service` | `ExecStart=/srv/http/bash/status-shairport.sh` |
-| `etc/shairport-sync.conf` | `dbus_service_bus = "system"` 유지 |
+`create-ros.sh`는 `install.sh`를 실행하지 않는다. 따라서 새 이미지에는 위 설정이 **rOS에 직접 반영**되어 있어야 한다.
 
 - `RELEASE`는 `togobeyond/rAudio`의 태그(예: `i20261030`)를 지정한다.
-- `create-ros.sh`가 `status.armv7h` → `status`로 이동시키므로, 포크 태그에 **새 바이너리가 커밋되어 있어야** 한다.
+- `create-ros.sh`가 `status.armv7h` → `status`로 이동시키므로, 태그에 **새 바이너리가 커밋되어 있어야** 한다.
 - 반대로 **기존 운영 기기 업데이트**는 `install.sh`가 위 설정을 마이그레이션한다.
 
 > `install.sh`를 수동 실행하면 `r1` 애드온 `installurl`(rern/rAudio)에서 다시 받아와 포크 내용을 덮어쓴다. 포크 이미지에서는 `install.sh`를 실행하지 않는다.
+
 
 
 ---
