@@ -383,7 +383,9 @@ playerStop() {
 	scrobbleOnStop $player
 	case $player in
 		airplay )
-			systemctl stop shairport # metadata
+			# status-shairport.sh runs as shairport.service itself - it exits on its own,
+			# so skip stopping the unit here to let the remaining lines run.
+			[[ ! $SHAIRPORT_SELF ]] && systemctl stop shairport # metadata
 			systemctl restart shairport-sync
 			rm -f $dirshm/{coverart,elapsed,timestamp}
 			;;

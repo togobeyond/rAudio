@@ -185,6 +185,7 @@ shairportsync | spotifyd | upmpdcli )
 		esac
 		playerActive $player && playerStop
 		systemctl disable --now $CMD
+		[[ $CMD == shairport-sync ]] && systemctl disable --now nqptp # PTP - only needed by AirPlay 2
 		if [[ ${CMD:0:1} == s && -e $dirsystem/snapclientserver ]]; then
 			for s in shairport-sync spotifyd; do
 				systemctl -q is-enabled $s && ENABLED=1 && break

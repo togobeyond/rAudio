@@ -31,9 +31,12 @@ dbus-monitor \
 					pushStatus
 					;;
 				*variant*'"Paused"' ) # ProgressString not change on Paused - calculate for elapsed
+					[[ $signal_time ]] || continue
 					ms_pause=$( signal_time2ms )
-					ms_prog=$( < $dirshm/timestamp )
-					echo $(( ( ms_pause - ms_prog + 500 ) / 1000 )) > $dirshm/elapsed # (s)
+					[[ -e $dirshm/timestamp ]] && ms_prog=$( < $dirshm/timestamp )
+					if [[ $ms_prog ]]; then
+						echo $(( ( ms_pause - ms_prog + 500 ) / 1000 )) > $dirshm/elapsed # (s)
+					fi
 					pushStatus
 					;;
 				*'"ProgressString"' )
@@ -41,7 +44,9 @@ dbus-monitor \
 					pushStatus
 					;;
 				*variant*'"Stopped"' )
+					export SHAIRPORT_SELF=1 # do not let playerStop stop this service mid-way
 					playerStop
+					exit
 					;;
 			esac
 		done

@@ -4,6 +4,10 @@ alias=r1
 
 . /srv/http/bash/settings/addons.sh
 
+# 20261030
+# AirPlay 2 (shairport-sync 5.x) requires nqptp - systemd unit has Requires=nqptp.service
+[[ -e /bin/shairport-sync && $( uname -m ) != armv6l ]] && ! pacman -Qq nqptp &> /dev/null && packages+=' nqptp'
+
 # 20261002
 if [[ -e /bin/camilladsp ]]; then
 	systemctl stop camilladsp

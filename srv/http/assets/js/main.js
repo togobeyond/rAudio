@@ -580,7 +580,7 @@ $( '.btn-cmd' ).on( 'click', function() {
 			if ( S.player !== 'mpd' ) {
 				BASH( [ 'playerstop', S.elapsed, 'CMD ELAPSED' ] );
 				var icon_player = {
-					  airplay   : 'AirPlay'
+					  airplay   : 'AirPlay 2'
 					, bluetooth : 'Bluetooth'
 					, snapcast  : 'Snapcast'
 					, spotify   : 'Spotify'

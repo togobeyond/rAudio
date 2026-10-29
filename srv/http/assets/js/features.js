@@ -488,7 +488,7 @@ var UTIL        = {
 			INFO( {
 				  ...SW
 				, list         : [
-					  [ ICON( 'airplay' ) +'AirPlay',        'checkbox' ]
+					  [ ICON( 'airplay' ) +'AirPlay 2',      'checkbox' ]
 					, [ ICON( 'bluetooth' ) +'Bluetooth',    'checkbox' ]
 					, [ ICON( 'spotify' ) +'Spotify',        'checkbox' ]
 					, [ ' '+ ICON( 'upnp' ) +' UPnP / DLNA', 'checkbox' ]
@@ -561,7 +561,7 @@ function renderPage() {
 	var currently   = ' is currently enabled.';
 	if ( S.snapclientserver ) {
 		var snapclientdisabled  = '';
-		if ( S.shairportsync ) snapclientdisabled = LABEL_ICON( 'AirPlay', 'shairportsync' );
+		if ( S.shairportsync ) snapclientdisabled = LABEL_ICON( 'AirPlay 2', 'shairportsync' );
 		if ( S.spotifyd ) snapclientdisabled += '&ensp;'+ LABEL_ICON( 'Spotiy', 'spotify' );
 		if ( snapclientdisabled ) {
 			snapclientdisabled += '<br>on'

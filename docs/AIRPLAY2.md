@@ -157,6 +157,31 @@ shairport-sync (D-Bus: org.gnome.ShairportSync)
 
 ## 4. 코드 수준 문제 목록
 
+### P0-0. 메타데이터 조회 대상이 잘못됨 (곡 정보가 절대 안 나옴)
+
+`rAudio-status/shairport_meta.hpp`
+
+```cpp
+sd_bus_get_property(bus, "org.gnome.ShairportSync",
+                    "/org/mpris/MediaPlayer2",
+                    "org.mpris.MediaPlayer2.Player", "Metadata", ...);
+```
+
+shairport-sync 5.0.4/5.6.1 소스 확인 결과 두 인터페이스는 **서로 다른 버스 이름**을 쓴다.
+
+| 대상 | 버스 이름 | 경로 | 인터페이스 |
+|---|---|---|---|
+| 네이티브 | `org.gnome.ShairportSync` | `/org/gnome/ShairportSync` | `org.gnome.ShairportSync.RemoteControl` (`Metadata`) |
+| MPRIS | `org.mpris.MediaPlayer2.ShairportSync` | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2.Player` (`Metadata`) |
+
+현재 코드는 `org.gnome.ShairportSync` + `/org/mpris/MediaPlayer2` 조합이라 **항상 실패**한다.
+→ Album/Artist/Title/커버/길이가 한 번도 채워지지 않는다. (배포 바이너리 문자열로도 동일 확인)
+
+**수정**: 네이티브 `RemoteControl.Metadata`를 먼저 조회하고, 실패 시 MPRIS로 fallback.
+
+> 참고: `Metadata` 사전 키는 양쪽 동일하다(`xesam:album`, `xesam:artist`, `xesam:title`, `mpris:artUrl`, `mpris:length`).
+> `mpris:artUrl`은 `file:///path` 형식이므로 `file://` 접두사를 제거해야 한다.
+
 ### P0-1. `ProgressString` 파싱 예외 → status 크래시
 
 `rAudio-status/shairport_meta.hpp`
@@ -274,7 +299,8 @@ echo $(( ( ms_pause - ms_prog + 500 ) / 1000 )) > $dirshm/elapsed
 
 - main 구조 유지: `status-shairport.sh` + C++ `status`.
 - bash로 되돌리지 않는다(중복·회귀 위험).
-- C++ 수정은 `rAudio-status`에서 하고, 빌드 결과(`status.armv7h`)를 rAudio에 커밋한다.
+- C++ 수정은 **`togobeyond/rAudio-status` `feature/airplay2`** 에서 하고, 빌드 결과(`status.armv7h`)를 rAudio에 커밋한다.
+- 빌드는 **Docker + qemu(linux/arm/v7)** 의 Arch Linux ARM 루트fs에서 네이티브 컴파일한다(기기 점유 없음, 반복 빌드 빠름).
 
 ### D4. 오디오 경로
 
@@ -329,6 +355,7 @@ busctl get-property org.gnome.ShairportSync /org/mpris/MediaPlayer2 \
 
 | ID | 작업 | 파일 |
 |---|---|---|
+| 1-0 | `Metadata` 조회 대상을 네이티브 `RemoteControl`로 (MPRIS fallback) | `shairport_meta.hpp` |
 | 1-1 | `ProgressString` 파싱 방어 | `shairport_meta.hpp` |
 | 1-2 | `SourceFormat` fallback | `shairport_meta.hpp` |
 | 1-3 | `PlayerState == "Not Available"` → `state=stop` | `shairport_meta.hpp` |
@@ -437,6 +464,40 @@ AirPlay 2 (shairport-sync)
 | 6-2 | `install.sh` 마이그레이션 추가 |
 | 6-3 | rOS로 armv7 이미지 생성 |
 | 6-4 | RPi 2 설치/검증 |
+
+**armv7h 빌드 절차 (Docker + qemu)**
+
+```bash
+# 1) binfmt 등록 (1회)
+docker run --privileged --rm tonistiigi/binfmt --install arm
+
+# 2) Arch Linux ARM armv7h 루트fs 준비
+curl -LO http://fl.us.mirror.archlinuxarm.org/os/ArchLinuxARM-armv7-latest.tar.gz
+#   (SMACK xattr 때문에 docker import가 실패하므로 xattr 제거 후 재포장)
+docker run --rm -v "$PWD:/w" debian:trixie-slim bash -c '
+  cd /w && mkdir -p x &&
+  tar --numeric-owner -xf ArchLinuxARM-armv7-latest.tar.gz -C x &&
+  tar --numeric-owner -cf armv7-rootfs.tar -C x .'
+docker import --platform linux/arm/v7 armv7-rootfs.tar alarm-armv7:base
+
+# 3) 빌드 환경
+docker run --name alarm-build --platform linux/arm/v7 alarm-armv7:base bash -c '
+  sed -i "s|^Server.*|Server = http://fl.us.mirror.archlinuxarm.org/\$arch/\$repo|" /etc/pacman.d/mirrorlist
+  sed -i "/^\[options\]/ a DisableSandbox" /etc/pacman.conf   # qemu에서 Landlock 없음
+  pacman -Syu --noconfirm
+  pacman -S --noconfirm --needed base-devel alsa-lib dbus curl libmpdclient \
+        systemd-libs libupnpp taglib pkgconf'
+docker commit alarm-build alarm-armv7:build
+
+# 4) 컴파일
+docker run --rm --platform linux/arm/v7 -v "$PWD/rAudio-status:/src" -w /src alarm-armv7:build \
+  g++ -O2 -Wno-psabi _status.cpp -o status \
+  $( pkg-config --cflags --libs alsa dbus-1 libcurl libmpdclient libsystemd libupnpp taglib )
+```
+
+- 결과물 `status`를 `rAudio/srv/http/bash/status.armv7h`로 복사해 커밋한다.
+- aarch64/armv6h 바이너리는 각 arch 환경에서 동일하게 빌드한다(당장은 armv7h만).
+
 
 ---
 

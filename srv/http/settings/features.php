@@ -31,16 +31,19 @@ $head         = [ 'title' => 'Renderers' ];
 $body         = [
 	  [
 		  'id'       => 'shairportsync'
-		, 'label'    => 'AirPlay'
+		, 'label'    => 'AirPlay 2'
 		, 'sub'      => 'shairport-sync'
 		, 'status'   => true
 		, 'exist'    => true
 		, 'help'     => <<< EOF
-<a href="https://github.com/mikebrady/shairport-sync">Shairport-sync</a> - AirPlay rendering device
+<a href="https://github.com/mikebrady/shairport-sync">Shairport-sync</a> - AirPlay 2 rendering device
 Note:
  · No sound: Increase volume on sender device (too low)
  · If $L->dsp is enabled, stop current track before start playing.
  · Playing files directly on rAudio yields better quality.
+ · AirPlay 2 needs PTP (nqptp) - it runs only while AirPlay is enabled.
+ · Not supported: Windows iTunes, 96/192 kHz, Dolby Atmos.
+ · Track info shows only when the sender provides metadata.
 EOF
 	]
 	, [
