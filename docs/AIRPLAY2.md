@@ -596,6 +596,35 @@ ExecStart=/srv/http/bash/status-shairport.sh
 
 > `install.sh`를 수동 실행하면 `r1` 애드온 `installurl`(rern/rAudio)에서 다시 받아와 포크 내용을 덮어쓴다. 포크 이미지에서는 `install.sh`를 실행하지 않는다.
 
+### 9.2 빌드된 이미지 (armv7h / RPi 2)
+
+| 항목 | 값 |
+|---|---|
+| 파일 | `rAudio-airplay2-armv7.img` (6.3 GiB) / `.img.xz` |
+| 베이스 | Arch Linux ARM `rpi-armv7` (2026-10) |
+| rOS | `togobeyond/rOS` `feature/airplay2` |
+| rAudio | `togobeyond/rAudio` tag `i20261030` |
+| 파티션 | boot 300 MiB FAT32 `BOOT` / root 6 GiB ext4 `ROOT` |
+| PARTUUID | `a7d3c5e1-01`, `a7d3c5e1-02` |
+| 설치 기능 | `bluealsa bluez bluez-utils python-dbus python-gobject python-requests shairport-sync snapcast spotifyd upmpdcli` |
+
+빌드는 SD 카드 없이 `create.sh`의 SD 작성 단계만 재현해서 만들었다.
+
+```
+bootcode.bin / start.elf / kernel7.img / initramfs-linux.img / dtbs / overlays
+/root/create-ros.sh + DATA  (BRANCH=feature/airplay2, RELEASE=i20261030)
+```
+
+**첫 부팅 후 `/root/create-ros.sh`를 실행해야** 패키지 설치와 rOS 오버레이 적용이 끝난다(rOS 원래 흐름과 동일).
+
+```bash
+ssh root@<IP>          # 초기 비밀번호 없음
+/root/create-ros.sh    # 20~40분, 완료 후 자동 재부팅
+```
+
+빌드 스크립트: `rOS-build/build-image.sh` (재빌드 시 태그/브랜치만 바꿔 실행)
+
+
 
 
 ---
