@@ -66,7 +66,8 @@ if ! grep -q 'disable --now shairport nqptp' "$dirbash/settings/features.sh"; th
 	fi
 fi
 
-echo "- shairport.service: enable at boot"
+echo "- shairport.service: enable at boot + keep alive"
+grep -q '^Restart=' "$unit" || sed -i '/^\[Service\]/a Restart=always\nRestartSec=5' "$unit"
 grep -q '^\[Install\]' "$unit" || printf '\n[Install]\nWantedBy=multi-user.target\n' >> "$unit"
 ln -sf "$unit" /etc/systemd/system/multi-user.target.wants/shairport.service
 
