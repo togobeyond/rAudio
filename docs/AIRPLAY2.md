@@ -167,8 +167,33 @@ shairport-sync (D-Bus: org.gnome.ShairportSync)
 
 - 시작 시 `PlayerState`는 **`"Not Available"`**로 초기화된다(`dbus-service.c`).
 - `ProgressString`은 소스가 `progress:`를 보낼 때만 갱신된다(`rtsp.c`: “this can be sent even when metadata is not solicited”). **AirPlay 2에서 항상 오지는 않는다.**
-- `SourceFormat`은 재생 시작 후에야 채워진다(형식: `AAC/48000/F24/2`).
+- `SourceFormat`은 재생 시작 후에야 채워진다(형식: `AAC/48000/F24/2`, `ALAC/44100/S16_LE/2`).
 - `ProgressString` 값은 **소스 샘플레이트 기준 프레임**(`start/current/end`)이다.
+
+### 3.3 `Protocol`은 세션 종류가 아니다
+
+```c
+#ifdef CONFIG_AIRPLAY_2
+  shairport_sync_set_protocol(..., "AirPlay 2");
+#else
+  shairport_sync_set_protocol(..., "AirPlay");
+#endif
+```
+
+`Protocol`은 **빌드 플래그**다. `"AirPlay 2"`가 나와도 현재 세션이 AirPlay 2라는 뜻이 아니고, Classic 세션이어도 같은 값이 나온다.
+
+실제 세션 포맷은 `SourceFormat`으로 판단한다.
+
+| 세션 | SourceFormat | 비고 |
+|---|---|---|
+| Classic / AP2 realtime | `ALAC/44100/S16_LE/2` | 16bit 44.1 — 맥 **시스템 출력**은 여기 |
+| AP2 buffered (Mac/iPhone, v5) | `AAC/48000/F24/2` | 24bit 48 — iPhone Music 앱에서 주로 |
+| AP2 buffered (HomePod/AppleTV) | `ALAC/48000/S24_LE/2` | 24bit 48 lossless |
+
+**24bit/48kHz를 받으려면 buffered AirPlay 2 세션이어야 하고, 이는 송신기가 결정한다.** 수신기에서 강제할 수 없다.
+
+표시 코드는 `F24`(float)와 `S24_LE`(int)를 모두 24bit로 파싱해야 한다 — `S24_LE` 미처리는 16bit로 오표시된다.
+
 
 ---
 
