@@ -8,6 +8,22 @@ alias=r1
 # AirPlay 2 (shairport-sync 5.x) requires nqptp - systemd unit has Requires=nqptp.service
 [[ -e /bin/shairport-sync && $( uname -m ) != armv6l ]] && ! pacman -Qq nqptp &> /dev/null && packages+=' nqptp'
 
+# 20261031
+# AirPlay 2 does not reliably run sessioncontrol.run_this_before_play_begins, which
+# left rAudio in MPD mode while AirPlay was playing. Run the D-Bus monitor from boot
+# instead, and let it handle the session end too.
+file=/etc/systemd/system/shairport.service
+if [[ -e $file ]]; then
+	grep -q '^\[Install\]' $file || printf '\n[Install]\nWantedBy=multi-user.target\n' >> $file
+	ln -sf $file /etc/systemd/system/multi-user.target.wants/shairport.service
+	file=/etc/shairport-sync.conf
+	if [[ -e $file ]] && grep -q '^[[:space:]]*run_this_after_play_ends' $file; then
+		sed -i 's|^\([[:space:]]*\)run_this_after_play_ends.*|\1// session end handled by /srv/http/bash/status-shairport.sh|' $file
+	fi
+	systemctl daemon-reload
+	systemctl -q is-enabled shairport-sync && systemctl enable --now shairport &> /dev/null
+fi
+
 # 20261002
 if [[ -e /bin/camilladsp ]]; then
 	systemctl stop camilladsp

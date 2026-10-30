@@ -176,6 +176,8 @@ shairportsync | spotifyd | upmpdcli )
 	[[ $CMD == shairportsync ]] && CMD=shairport-sync
 	if [[ $ON ]]; then
 		serviceRestartEnable
+		# D-Bus monitor - must run independently of the session hooks
+		[[ $CMD == shairport-sync ]] && systemctl enable --now shairport &> /dev/null
 		[[ -e $dirmpdconf/snapserver.conf ]] && snapclientEnable
 	else
 		case $CMD in
@@ -185,7 +187,7 @@ shairportsync | spotifyd | upmpdcli )
 		esac
 		playerActive $player && playerStop
 		systemctl disable --now $CMD
-		[[ $CMD == shairport-sync ]] && systemctl disable --now nqptp &> /dev/null # PTP - only needed by AirPlay 2
+		[[ $CMD == shairport-sync ]] && systemctl disable --now shairport nqptp &> /dev/null # monitor + PTP - only for AirPlay
 		if [[ ${CMD:0:1} == s && -e $dirsystem/snapclientserver ]]; then
 			for s in shairport-sync spotifyd; do
 				systemctl -q is-enabled $s && ENABLED=1 && break

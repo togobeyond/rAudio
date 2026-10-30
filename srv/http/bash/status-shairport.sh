@@ -1,20 +1,35 @@
 #!/bin/bash
 
 # shairport.service > this:
+#    - keeps rAudio's AirPlay state in sync with shairport-sync over D-Bus
+#
+# This service is enabled at boot and does NOT rely on
+# sessioncontrol.run_this_before_play_begins - AirPlay 2 does not reliably
+# run that hook, which left rAudio in MPD mode while AirPlay was playing.
 
 . /srv/http/bash/common.sh
-
-##### start
-if ! playerActive airplay; then
-	playerStart airplay
-	date +%s%3N > $dirshm/timestamp
-	pushStatus
-fi
 
 signal_time2ms() {
 	s=${signal_time:12:14} # signal time=1789821430.049331 ... > 1789821430.049 (s)
 	echo ${s/.}            # 1789821430049 (ms)
 }
+
+# switch rAudio to the AirPlay player as soon as a session starts
+airplayStart() {
+	playerActive airplay && return
+	playerStart airplay
+	date +%s%3N > $dirshm/timestamp
+}
+
+# pick up a session that is already running when this service starts
+state=$( busctl get-property org.gnome.ShairportSync /org/gnome/ShairportSync \
+	org.gnome.ShairportSync.RemoteControl PlayerState 2> /dev/null )
+case $state in
+	*'"Playing"'*|*'"Paused"'* )
+		airplayStart
+		pushStatus
+		;;
+esac
 
 dbus-monitor \
 	--system \
@@ -27,7 +42,11 @@ dbus-monitor \
 				*PropertiesChanged )
 					signal_time=$line
 					;;
-				*'"Metadata"' | *variant*'"Playing"' )
+				*variant*'"Playing"' )
+					airplayStart
+					pushStatus
+					;;
+				*'"Metadata"' )
 					pushStatus
 					;;
 				*variant*'"Paused"' ) # ProgressString not change on Paused - calculate for elapsed
@@ -44,9 +63,9 @@ dbus-monitor \
 					pushStatus
 					;;
 				*variant*'"Stopped"' )
-					export SHAIRPORT_SELF=1 # do not let playerStop stop this service mid-way
-					playerStop
-					exit
+					if playerActive airplay; then
+						playerStop
+					fi
 					;;
 			esac
 		done
