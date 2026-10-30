@@ -628,6 +628,44 @@ systemctl start ros-setup
 
 빌드 스크립트: `rOS-build/build-image.sh` (재빌드 시 태그/브랜치만 바꿔 실행)
 
+### 9.3 첫 부팅 스크립트 주의점 (재발 방지)
+
+`create-ros.sh`는 `DATA`를 상대 경로로 읽는다(`. DATA`). systemd는 유닛을 **`cwd=/`** 로 실행하므로 `WorkingDirectory`가 없으면 다음이 연쇄로 깨진다.
+
+| 빈 값 | 결과 |
+|---|---|
+| `PARTID_R` | `cmdline.txt`가 `root=` (공백) → **부팅 불가** |
+| `START` | `upgrade_install`이 즉시 return → **패키지 미설치** |
+| `FEATURES` | 렌더러/AirPlay 미설치 (firefox 없음 → `console=tty1` 분기) |
+| `RELEASE` | rAudio tarball 경로가 `tags/` → 404 |
+
+적용한 방어:
+
+```ini
+# ros-setup.service
+WorkingDirectory=/root
+```
+
+```bash
+# create-ros.sh
+cd /root
+. DATA
+[[ $PARTID_R && $START ]] || { echo "ERROR: /root/DATA incomplete"; exit 1; }
+...
+[[ $PARTID_R ]] || { echo "ERROR: PARTID_R empty"; exit 1; }   # cmdline 쓰기 직전
+```
+
+추가로 **이미지의 `cmdline.txt`를 빌드 시점에 `root=PARTUUID=a7d3c5e1-02`로 기록**해서, 첫 부팅 스크립트가 실패해도 부팅은 되도록 했다.
+
+빌드 스크립트 검증 항목:
+
+```
+create-ros.sh 에 "cd /root" 와 assign 금지 문자열 존재
+ros-setup.service 에 WorkingDirectory=/root 존재
+조립된 이미지의 cmdline.txt 에 root=PARTUUID=... 존재
+```
+
+
 
 
 
