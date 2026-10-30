@@ -26,7 +26,7 @@ set -u
 dirbash=/srv/http/bash
 unit=/etc/systemd/system/shairport.service
 conf=/etc/shairport-sync.conf
-base=https://raw.githubusercontent.com/togobeyond/rAudio/a37709297a5c1a1ba07c65b055b063ca8f5b4e4b
+base=https://raw.githubusercontent.com/togobeyond/rAudio/11f6d51acf5479310a7aaf9fcb9493adab0d198c
 backup=/root/airplay2-hotfix-$(date +%Y%m%d-%H%M%S)
 
 [[ ! -e $dirbash/status ]] && { echo "not an rAudio install: $dirbash/status missing"; exit 1; }
