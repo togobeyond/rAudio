@@ -738,3 +738,45 @@ journalctl -u shairport-sync -u nqptp -f
 - 진행 시간 0 → `ProgressString`/`mpris:length` 제공 여부
 - 종료 후 상태 잔상 → `playerStop` 자기 stop 문제 확인
 - 설정 초기화 → `player-conf.sh`/SnapServer `.default` 처리
+
+---
+
+## 12. 운영 절차 (이미지 재굽기 없이)
+
+이미지를 다시 굽지 않고, **업스트림 업데이트 + 우리 수정 재적용**으로 유지한다.
+
+### 순서 (반드시 업데이트 먼저)
+
+```bash
+# 1) rAudio 업데이트 (Web UI → Addons → rAudio  또는)
+curl -sL https://github.com/rern/rAudio/raw/main/install.sh | bash
+
+# 2) 재부팅 권장
+reboot
+
+# 3) AirPlay 2 수정 재적용
+curl -fsSL https://raw.githubusercontent.com/togobeyond/rAudio/67f5b76aed295ef7ab5f142d7157aa39ab3885f7/patches/airplay2-hotfix.sh -o /root/airplay2-hotfix.sh
+bash /root/airplay2-hotfix.sh
+```
+
+### 확인
+
+```bash
+systemctl is-enabled shairport shairport-sync
+grep -c airplayStart /srv/http/bash/status-shairport.sh   # 3
+grep -n 'shairport nqptp' /srv/http/bash/settings/features.sh
+```
+
+그리고 AirPlay 재생 → 정지 → 재재생 3단계 확인.
+
+### 왜 업데이트가 먼저인가
+
+업로드된 업데이트(`install.sh` + tarball)가 아래를 덮어쓴다.
+
+| 덮어써지는 것 | 결과 |
+|---|---|
+| `status` (바이너리) | S24 파싱/방어 코드 사라짐 |
+| `status-shairport.sh` | 구 방식(세션 훅 의존)으로 복귀 |
+| `common.sh`, `settings/features.sh` | 모니터/nqptp 정리 로직 사라짐 |
+
+핫픽스는 **멱등**이라 업데이트 후 여러 번 실행해도 안전하다.
