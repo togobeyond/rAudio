@@ -606,20 +606,24 @@ ExecStart=/srv/http/bash/status-shairport.sh
 | rAudio | `togobeyond/rAudio` tag `i20261030` |
 | 파티션 | boot 300 MiB FAT32 `BOOT` / root 6 GiB ext4 `ROOT` |
 | PARTUUID | `a7d3c5e1-01`, `a7d3c5e1-02` |
-| 설치 기능 | `bluealsa bluez bluez-utils python-dbus python-gobject python-requests shairport-sync snapcast spotifyd upmpdcli` |
+| 설치 기능 | 공식 이미지 기본값(전체): `bluealsa bluez bluez-utils python-dbus python-gobject python-requests camilladsp python-websocket-client firefox matchbox-window-manager plymouth-lite-rbp-git upower xf86-video-fbturbo iwd samba shairport-sync snapcast spotifyd upmpdcli` |
 
 빌드는 SD 카드 없이 `create.sh`의 SD 작성 단계만 재현해서 만들었다.
 
 ```
 bootcode.bin / start.elf / kernel7.img / initramfs-linux.img / dtbs / overlays
 /root/create-ros.sh + DATA  (BRANCH=feature/airplay2, RELEASE=i20261030)
+/etc/systemd/system/ros-setup.service  (enabled)
 ```
 
-**첫 부팅 후 `/root/create-ros.sh`를 실행해야** 패키지 설치와 rOS 오버레이 적용이 끝난다(rOS 원래 흐름과 동일).
+**첫 부팅 시 `ros-setup.service`가 `/root/create-ros.sh`를 자동 실행**한다(tty1, 네트워크 최대 5분 대기).
+완료 후 스스로 `disable`하고 재부팅하므로 두 번 실행되지 않는다.
 
 ```bash
-ssh root@<IP>          # 초기 비밀번호 없음
-/root/create-ros.sh    # 20~40분, 완료 후 자동 재부팅
+# 진행 상황 (모니터 없이)
+journalctl -u ros-setup -f
+# 수동 재실행
+systemctl start ros-setup
 ```
 
 빌드 스크립트: `rOS-build/build-image.sh` (재빌드 시 태그/브랜치만 바꿔 실행)
