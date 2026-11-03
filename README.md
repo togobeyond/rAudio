@@ -10,6 +10,7 @@ r A u d i o
 - [Features](#features)
 - [Supported devices](#supported-devices)
 - [How-to](#how-to)
+- [Post-install setup (fork)](POST-INSTALL.md) - 이미지 굽기 · AirPlay · NAS 자동 마운트 · 웹라디오
 - [Tips](#tips)
 - [Q&A](#qa)
 - [Image files / DIY](#image-files--diy)
