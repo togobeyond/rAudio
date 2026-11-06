@@ -416,30 +416,53 @@ ls /srv/http/data/webradio
 > `counts`·목록·UI 푸시가 함께 갱신됩니다.
 > 그래도 화면 숫자가 그대로면 **브라우저 강제 새로고침(⌘⇧R)**.
 
-## C-5. MPD 워치독
+## C-5. MPD / AirPlay 워치독
 
-HLS 라디오를 빠르게 전환하다 MPD가 교착되면 `status.json` 이 비어 **웹 UI가 멈춥니다**
-(OS는 정상). 1분마다 확인해 3회 연속 실패 시 자동 복구합니다.
+세 가지 상황을 1분마다 감시합니다.
+
+1. HLS 라디오 전환 중 MPD 교착 → `status.json` 이 비어 UI 정지
+2. AirPlay 재생 중인데 rAudio 인식이 어긋남 (`player` ≠ `airplay`) → UI 무반응
+3. `player=airplay` 인데 shairport 가 죽음 → UI가 AirPlay 모드에 고정
 
 `/usr/local/bin/radio-watchdog.sh`:
 
 ```bash
 #!/bin/bash
-# MPD 무응답 감지 → 자동 복구
+# MPD/AirPlay 상태 감시 → 자동 복구
+#  - shairport-sync 가 Playing 인데 rAudio 가 airplay 로 인식하지 못하면 메타데이터 감시 재시작
+#  - player 가 airplay 로 고정된 채 shairport 가 없으면 mpd 로 복구
 #  - mpc status 가 연속 3회 실패하면 mpd 재시작 + status.json 재생성
-#  - player 가 airplay 로 고정된 채 shairport 가 없으면 mpd 로 복구 (UI 빈 화면 방지)
 
 STATE=/run/radio-watchdog.fail
 MAX=3
+PLAYER=$(cat /dev/shm/player 2>/dev/null)
 
-if [ "$(cat /dev/shm/player 2>/dev/null)" = "airplay" ] \
-   && ! systemctl is-active --quiet shairport-sync; then
+# 1) AirPlay 재생 중인데 rAudio 인식이 어긋난 경우
+if systemctl is-active --quiet shairport-sync; then
+    pstate=$(timeout 3 gdbus call --system \
+        --dest org.gnome.ShairportSync \
+        --object-path /org/gnome/ShairportSync \
+        --method org.freedesktop.DBus.Properties.Get \
+        org.gnome.ShairportSync.RemoteControl PlayerState 2>/dev/null)
+    case "$pstate" in
+        *Playing*|*Paused*)
+            if [ "$PLAYER" != "airplay" ]; then
+                echo "watchdog: airplay active but player=$PLAYER - restarting shairport"
+                systemctl restart shairport
+            fi
+            ;;
+    esac
+fi
+
+# 2) player=airplay 인데 shairport 가 없으면 mpd 로 복구 (UI 빈 화면 방지)
+if [ "$PLAYER" = "airplay" ] && ! systemctl is-active --quiet shairport-sync; then
     echo "watchdog: player stuck at airplay - reset to mpd"
     echo mpd > /dev/shm/player
     rm -f /dev/shm/pidstatuspush
     /srv/http/bash/status-push.sh >/dev/null 2>&1
 fi
 
+# 3) MPD 응답성
 if timeout 5 mpc status >/dev/null 2>&1; then
     rm -f "$STATE"
     exit 0
@@ -527,8 +550,13 @@ journalctl -b -1 -k | grep "new high-speed USB device"   # 재열거 이력
 
 ### ① DAC 재연결 시 자동 복구
 
-DAC이 빠지면 **rAudio가 온보드 이어폰 출력으로 폴백**하고(`output.conf` 재작성),
-DAC이 돌아와도 되돌리지 않습니다. 이 훅이 출력 설정까지 복원합니다.
+DAC이 빠지면 **rAudio가 온보드 이어폰 출력으로 폴백**하며 **두 파일을 모두 덮어씁니다**.
+DAC이 돌아와도 되돌리지 않으므로, 훅에서 둘 다 복원해야 합니다.
+
+```
+/srv/http/data/mpdconf/output.conf      MPD 출력
+/etc/shairport-sync.conf                AirPlay(shairport) 출력
+```
 
 `/usr/local/bin/usb-dac-ready.sh`:
 
@@ -536,11 +564,12 @@ DAC이 돌아와도 되돌리지 않습니다. 이 훅이 출력 설정까지 �
 #!/bin/bash
 # USB DAC 재연결 시
 #  1) DAC 카드가 올라올 때까지 대기
-#  2) output.conf 가 다른 장치(온보드 등)로 폴백돼 있으면 DAC 으로 복원
+#  2) MPD output.conf / shairport 설정이 다른 장치로 폴백돼 있으면 DAC 으로 복원
 #  3) 오디오 서비스 재시작
 #  4) AirPlay 세션이 끊긴 채 player=airplay 로 남아 있으면 mpd 로 복구
 
 CONF="/srv/http/data/mpdconf/output.conf"
+SHAIR="/etc/shairport-sync.conf"
 CARDPAT="E30 II Lite"
 CARDNAME="Lite"
 
@@ -551,8 +580,9 @@ done
 
 grep -q "$CARDPAT" /proc/asound/cards 2>/dev/null || exit 0
 
+# MPD 출력
 if ! grep -q "$CARDPAT" "$CONF" 2>/dev/null; then
-    echo "usb-dac-ready: restoring output -> $CARDPAT"
+    echo "usb-dac-ready: restoring mpd output -> $CARDPAT"
     cat > "$CONF" <<EOF
 audio_output {
 	name           "Topping E30 II Lite"
@@ -567,8 +597,19 @@ EOF
     chmod 644 "$CONF"
 fi
 
+# shairport 출력 (rAudio 는 폴백 시 이 파일도 덮어쓴다)
+if ! grep -q "$CARDPAT" "$SHAIR" 2>/dev/null; then
+    echo "usb-dac-ready: restoring shairport output -> $CARDPAT"
+    sed -i '/^alsa = {/,/^}/c\
+alsa = {\
+	output_device = "hw:CARD='"$CARDNAME"'";\
+	mixer_control_name = "'"$CARDPAT"'";\
+}' "$SHAIR"
+fi
+
 systemctl try-restart mpd shairport-sync
 
+# 재시작으로 AirPlay 세션이 끊겼으므로 player 상태를 되돌린다
 if [ "$(cat /dev/shm/player 2>/dev/null)" = "airplay" ]; then
     echo "usb-dac-ready: reset player -> mpd"
     echo mpd > /dev/shm/player
@@ -741,6 +782,8 @@ pacman -Sy --needed --noconfirm htop
 | 웹라디오가 며칠 뒤 재생 안 됨 | 서명 토큰 만료 | `systemctl start radio-refresh.service` |
 | 라디오 개수가 예전 값 | `counts` 미갱신 또는 캐시 | `radio-refresh.service` 실행 후 ⌘⇧R |
 | 장시간 유휴 후 소리 안 남 | DAC USB 재열거 + `hw:2` 고정 | C-6 (udev 자동복구 + `hw:CARD`) |
+| AirPlay 연결했는데 무반응 | `shairport` 메타데이터 감시가 stale (D-Bus 연결 끊김) | `systemctl restart shairport` (워치독이 자동 처리) |
+| AirPlay는 되는데 소리만 안 남 | `/etc/shairport-sync.conf` 가 온보드로 덮어써짐 | `output_device = "hw:CARD=<카드id>"` 로 복원 후 `systemctl restart shairport-sync` |
 | `alsactl: Too many levels of symbolic links` | `/var/lib/alsa` 루프 | C-6 ④ |
 
 ---
