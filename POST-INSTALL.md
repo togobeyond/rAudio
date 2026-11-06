@@ -168,7 +168,7 @@ SMB는 하위 폴더만 따로 마운트할 수 없으므로 **소스 경로에 
 
 ```bash
 cat >> /etc/fstab <<'EOF'
-//<NAS IP>/win/music /mnt/MPD/NAS cifs username=<USER>,password=<PASS>,uid=45,gid=45,iocharset=utf8,_netdev,nofail,noatime,actimeo=60,x-systemd.automount,x-systemd.mount-timeout=30 0 0
+//<NAS IP>/win/music /mnt/MPD/NAS cifs username=<USER>,password=<PASS>,uid=45,gid=45,iocharset=utf8,_netdev,nofail,noatime,actimeo=60,soft,echo_interval=30,noserverino,x-systemd.automount,x-systemd.mount-timeout=30 0 0
 EOF
 mkdir -p /mnt/MPD/NAS
 systemctl daemon-reload
@@ -181,11 +181,98 @@ findmnt /mnt/MPD/NAS
 | `uid=45,gid=45` | MPD 사용자 소유 (Arch 기준 mpd uid/gid = 45) |
 | `iocharset=utf8` | 한글 폴더명 |
 | `actimeo=60` | 속성 캐시 60초. 스캔 2~3배 향상 (기본 1초) |
+| `soft` | 서버 무응답 시 무한 대기 대신 오류 반환 |
+| `echo_interval=30` | keepalive 30초. 끊김을 더 빨리 감지 (기본 60) |
+| `noserverino` | inode 재사용 경고 제거 |
 | `x-systemd.automount` | **부팅 시 네트워크 경합 회피** (필수) |
 | `_netdev,nofail` | NAS가 꺼져 있어도 부팅 지속 |
 
 > ⚠️ `_netdev,nofail` 만 쓰면 부팅 시 `cifs_mount failed w/return code = -101` 로
 > 실패하고 재시도하지 않습니다. 반드시 `x-systemd.automount` 를 함께 쓰세요.
+
+### NAS 워치독 (끊김 자동 복구)
+
+NAS의 SMB 세션이 몇 시간마다 끊기면(`CIFS: ... has not responded in 180 seconds`)
+MPD가 I/O에 묶여 **웹 UI와 AirPlay가 함께 멈춥니다**. 2분마다 확인해 자동 리마운트합니다.
+
+`/usr/local/bin/nas-watchdog.sh`:
+
+```bash
+#!/bin/bash
+# NAS(CIFS) 마운트 헬스체크 → 실패 시 리마운트 + MPD 복구
+MNT=/mnt/MPD/NAS
+STATE=/run/nas-watchdog.fail
+MAX=3
+
+if timeout 8 stat "$MNT" >/dev/null 2>&1 && timeout 8 ls "$MNT" >/dev/null 2>&1; then
+    rm -f "$STATE"
+    exit 0
+fi
+
+n=$(cat "$STATE" 2>/dev/null || echo 0)
+n=$(( n + 1 ))
+echo "$n" > "$STATE"
+[ "$n" -lt "$MAX" ] && exit 0
+
+echo "nas-watchdog: $MNT unresponsive (${n}x) - remounting"
+systemctl restart mnt-MPD-NAS.automount >/dev/null 2>&1
+umount -l "$MNT" >/dev/null 2>&1
+sleep 3
+
+if timeout 10 ls "$MNT" >/dev/null 2>&1; then
+    echo "nas-watchdog: remount OK"
+    rm -f "$STATE"
+else
+    echo "nas-watchdog: remount failed"
+    exit 1
+fi
+
+if ! timeout 8 mpc status >/dev/null 2>&1; then
+    echo "nas-watchdog: restarting mpd"
+    systemctl restart mpd
+fi
+
+rm -f /dev/shm/pidstatuspush
+/srv/http/bash/status-push.sh >/dev/null 2>&1
+if [ "$(stat -c %s /dev/shm/status.json 2>/dev/null || echo 0)" -lt 10 ]; then
+    /srv/http/bash/status -s > /dev/shm/status.json 2>/dev/null
+fi
+
+exit 0
+```
+
+`/etc/systemd/system/nas-watchdog.service`:
+
+```ini
+[Unit]
+Description=NAS mount watchdog (auto remount)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nas-watchdog.sh
+```
+
+`/etc/systemd/system/nas-watchdog.timer`:
+
+```ini
+[Unit]
+Description=Run NAS watchdog every 2 minutes
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* *:00/2:00
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+chmod 755 /usr/local/bin/nas-watchdog.sh
+systemctl daemon-reload
+systemctl enable --now nas-watchdog.timer
+systemctl list-timers nas-watchdog.timer
+```
 
 ### MPD 스캔
 
@@ -429,16 +516,45 @@ journalctl -b -1 -k | grep "new high-speed USB device"   # 재열거 이력
 
 ### ① DAC 재연결 시 자동 복구
 
+DAC이 빠지면 **rAudio가 온보드 이어폰 출력으로 폴백**하고(`output.conf` 재작성),
+DAC이 돌아와도 되돌리지 않습니다. 이 훅이 출력 설정까지 복원합니다.
+
 `/usr/local/bin/usb-dac-ready.sh`:
 
 ```bash
 #!/bin/bash
-# USB DAC 재연결 시 오디오 서비스 재시작 (죽은 ALSA 핸들 해소)
+# USB DAC 재연결 시
+#  1) DAC 카드가 올라올 때까지 대기
+#  2) output.conf 가 다른 장치(온보드 등)로 폴백돼 있으면 DAC 으로 복원
+#  3) 오디오 서비스 재시작
+
+CONF="/srv/http/data/mpdconf/output.conf"
+CARDPAT="E30 II Lite"
+CARDNAME="Lite"
+
 for i in $(seq 1 10); do
-    grep -q "E30 II Lite" /proc/asound/cards 2>/dev/null && break
+    grep -q "$CARDPAT" /proc/asound/cards 2>/dev/null && break
     sleep 1
 done
-grep -q "E30 II Lite" /proc/asound/cards 2>/dev/null || exit 0
+
+grep -q "$CARDPAT" /proc/asound/cards 2>/dev/null || exit 0
+
+if ! grep -q "$CARDPAT" "$CONF" 2>/dev/null; then
+    echo "usb-dac-ready: restoring output -> $CARDPAT"
+    cat > "$CONF" <<EOF
+audio_output {
+	name           "Topping E30 II Lite"
+	device         "hw:CARD=$CARDNAME"
+	type           "alsa"
+	auto_resample  "no"
+	auto_format    "no"
+	mixer_type     "none"
+}
+EOF
+    chown root:root "$CONF"
+    chmod 644 "$CONF"
+fi
+
 systemctl try-restart mpd shairport-sync
 exit 0
 ```
