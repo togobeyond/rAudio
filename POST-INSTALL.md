@@ -426,8 +426,19 @@ HLS 라디오를 빠르게 전환하다 MPD가 교착되면 `status.json` 이 �
 ```bash
 #!/bin/bash
 # MPD 무응답 감지 → 자동 복구
+#  - mpc status 가 연속 3회 실패하면 mpd 재시작 + status.json 재생성
+#  - player 가 airplay 로 고정된 채 shairport 가 없으면 mpd 로 복구 (UI 빈 화면 방지)
+
 STATE=/run/radio-watchdog.fail
 MAX=3
+
+if [ "$(cat /dev/shm/player 2>/dev/null)" = "airplay" ] \
+   && ! systemctl is-active --quiet shairport-sync; then
+    echo "watchdog: player stuck at airplay - reset to mpd"
+    echo mpd > /dev/shm/player
+    rm -f /dev/shm/pidstatuspush
+    /srv/http/bash/status-push.sh >/dev/null 2>&1
+fi
 
 if timeout 5 mpc status >/dev/null 2>&1; then
     rm -f "$STATE"
@@ -527,6 +538,7 @@ DAC이 돌아와도 되돌리지 않습니다. 이 훅이 출력 설정까지 �
 #  1) DAC 카드가 올라올 때까지 대기
 #  2) output.conf 가 다른 장치(온보드 등)로 폴백돼 있으면 DAC 으로 복원
 #  3) 오디오 서비스 재시작
+#  4) AirPlay 세션이 끊긴 채 player=airplay 로 남아 있으면 mpd 로 복구
 
 CONF="/srv/http/data/mpdconf/output.conf"
 CARDPAT="E30 II Lite"
@@ -556,6 +568,14 @@ EOF
 fi
 
 systemctl try-restart mpd shairport-sync
+
+if [ "$(cat /dev/shm/player 2>/dev/null)" = "airplay" ]; then
+    echo "usb-dac-ready: reset player -> mpd"
+    echo mpd > /dev/shm/player
+    rm -f /dev/shm/pidstatuspush
+    /srv/http/bash/status-push.sh >/dev/null 2>&1
+fi
+
 exit 0
 ```
 
@@ -714,6 +734,7 @@ pacman -Sy --needed --noconfirm htop
 |---|---|---|
 | 웹 UI가 로딩에서 멈춤 | `websocket.service` 실패 (nqptp와 UDP 9000 충돌) | B 업데이트 적용. 구버전은 websocket.py 9000→9001 |
 | 웹 UI가 빈 화면 (서비스는 정상) | MPD 교착 → 빈 `status.json` | 워치독이 3분 내 복구 (C-5) |
+| 웹 UI가 빈 화면 (player=airplay 고정) | AirPlay 세션 비정상 종료 → `/dev/shm/player` 가 `airplay` 로 남음 | 워치독이 자동 복구. 수동: `echo mpd > /dev/shm/player` 후 `status-push.sh` |
 | NAS 마운트 실패 (`-101`) | 부팅 시 네트워크 경합 | `x-systemd.automount` (C-3) |
 | 스캔이 멈춘 듯 | MPD는 완료 시 일괄 커밋 | `mpc status`의 `Updating DB` 로 판단 |
 | 웹라디오 `unrecognized file` | MPD가 원격 `.pls` 미지원 | 실제 스트림 URL(m3u8) 저장 (C-4) |
