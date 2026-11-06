@@ -127,6 +127,10 @@ ss -ulnp | grep -E ':9000|:9001'          # nqptp:9000 / websocket:9001
 
 # C. 내가 반영할 것
 
+> **자동화**: 이 장 전체를 스크립트로 옮긴 [`provision/`](../provision/README.md) 이 있습니다.
+> 새 이미지에서는 `sudo provision/provision.sh --check` 로 점검하고, 인자 없이 실행하면 적용됩니다.
+> 아래는 각 항목의 원리와 수동 절차입니다.
+
 ## C-0. 반영 순서
 
 | 순서 | 항목 | 절 | 비고 |
