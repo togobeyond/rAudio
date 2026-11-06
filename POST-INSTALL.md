@@ -418,24 +418,31 @@ ls /srv/http/data/webradio
 
 ## C-5. MPD / AirPlay 워치독
 
-세 가지 상황을 1분마다 감시합니다.
+네 가지 상황을 1분마다 감시합니다.
 
 1. HLS 라디오 전환 중 MPD 교착 → `status.json` 이 비어 UI 정지
 2. AirPlay 재생 중인데 rAudio 인식이 어긋남 (`player` ≠ `airplay`) → UI 무반응
 3. `player=airplay` 인데 shairport 가 죽음 → UI가 AirPlay 모드에 고정
+4. **선호 DAC 설정 표류** — 재열거 이벤트를 놓쳐 출력이 온보드로 남은 경우
+
+선호 출력 마커(4번 감시 대상):
+
+```bash
+echo 'E30 II Lite' > /etc/raudio-dac-preferred
+```
+
+> 마커를 지우면 이 감시가 꺼집니다(의도적으로 다른 출력을 쓸 때).
 
 `/usr/local/bin/radio-watchdog.sh`:
 
 ```bash
 #!/bin/bash
 # MPD/AirPlay 상태 감시 → 자동 복구
-#  - shairport-sync 가 Playing 인데 rAudio 가 airplay 로 인식하지 못하면 메타데이터 감시 재시작
-#  - player 가 airplay 로 고정된 채 shairport 가 없으면 mpd 로 복구
-#  - mpc status 가 연속 3회 실패하면 mpd 재시작 + status.json 재생성
-
 STATE=/run/radio-watchdog.fail
 MAX=3
 PLAYER=$(cat /dev/shm/player 2>/dev/null)
+DAC_MARK=/etc/raudio-dac-preferred
+DAC_PAT=$(cat "$DAC_MARK" 2>/dev/null || echo "E30 II Lite")
 
 # 1) AirPlay 재생 중인데 rAudio 인식이 어긋난 경우
 if systemctl is-active --quiet shairport-sync; then
@@ -454,7 +461,7 @@ if systemctl is-active --quiet shairport-sync; then
     esac
 fi
 
-# 2) player=airplay 인데 shairport 가 없으면 mpd 로 복구 (UI 빈 화면 방지)
+# 2) player=airplay 인데 shairport 가 없으면 mpd 로 복구
 if [ "$PLAYER" = "airplay" ] && ! systemctl is-active --quiet shairport-sync; then
     echo "watchdog: player stuck at airplay - reset to mpd"
     echo mpd > /dev/shm/player
@@ -462,7 +469,16 @@ if [ "$PLAYER" = "airplay" ] && ! systemctl is-active --quiet shairport-sync; th
     /srv/http/bash/status-push.sh >/dev/null 2>&1
 fi
 
-# 3) MPD 응답성
+# 3) 선호 DAC 설정 표류 감지 → 복원
+if [ -f "$DAC_MARK" ] && grep -q "$DAC_PAT" /proc/asound/cards 2>/dev/null; then
+    if ! grep -q "$DAC_PAT" /srv/http/data/mpdconf/output.conf 2>/dev/null \
+       || ! grep -q "$DAC_PAT" /etc/shairport-sync.conf 2>/dev/null; then
+        echo "watchdog: preferred DAC config drifted - restoring"
+        /usr/local/bin/usb-dac-ready.sh
+    fi
+fi
+
+# 4) MPD 응답성
 if timeout 5 mpc status >/dev/null 2>&1; then
     rm -f "$STATE"
     exit 0
@@ -556,6 +572,12 @@ DAC이 돌아와도 되돌리지 않으므로, 훅에서 둘 다 복원해야 �
 ```
 /srv/http/data/mpdconf/output.conf      MPD 출력
 /etc/shairport-sync.conf                AirPlay(shairport) 출력
+```
+
+선호 출력 마커(워치독이 설정 표류를 감시하는 기준):
+
+```bash
+echo 'E30 II Lite' > /etc/raudio-dac-preferred
 ```
 
 `/usr/local/bin/usb-dac-ready.sh`:
