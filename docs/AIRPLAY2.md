@@ -794,3 +794,24 @@ bash /root/bluetooth-connect-fix.sh
 - diff가 비어 있으면 **현재 연결된 기기로 진행**하도록 fallback 추가
 - 멱등 (재실행 안전), 원본은 `/root/networks-bluetooth.sh.bak-*`에 백업
 - rAudio 업데이트 후 다시 실행 필요 (AirPlay 핫픽스와 동일)
+
+### 12.2 블루투스 코덱 (AAC)
+
+Galaxy S24 Ultra에서 **개발자 옵션 → Bluetooth 오디오 코덱 → AAC** 로 지정한 뒤,
+개발자 옵션을 꺼도 재연결 시 AAC가 유지되는 것을 확인했다.
+
+```
+, "sampling": "44.1 kHz • AAC"
+bluealsa: Starting transport: A2DP Sink (AAC)
+```
+
+확인:
+
+```bash
+/srv/http/bash/status | grep sampling
+journalctl -u bluealsa -n 40 --no-pager | grep -E "Starting transport|A2DP Sink \("
+```
+
+- Pi는 **SBC/AAC 엔드포인트를 모두** 제공하고, 코덱 선택은 송신기(폰)가 한다.
+- Pi 쪽에서 AAC를 강제하는 설정은 없다.
+- LDAC은 `libldac` + `bluez-alsa` 재빌드가 필요하며, Pi 4에서는 660 kbps가 안정적이다.
