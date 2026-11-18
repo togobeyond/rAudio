@@ -787,7 +787,7 @@ grep -n 'shairport nqptp' /srv/http/bash/settings/features.sh
 udev 훅이 `$dirshm/Connected`와 현재 목록을 diff하는데, 목록이 낡아 있으면 빈 diff로 종료하기 때문이다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/togobeyond/rAudio/<commit>/patches/bluetooth-connect-fix.sh -o /root/bluetooth-connect-fix.sh
+curl -fsSL https://raw.githubusercontent.com/togobeyond/rAudio/18a31abbe31b0eaff6420639019bb6e4d874d40d/patches/bluetooth-connect-fix.sh -o /root/bluetooth-connect-fix.sh
 bash /root/bluetooth-connect-fix.sh
 ```
 
