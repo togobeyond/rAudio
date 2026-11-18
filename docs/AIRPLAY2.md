@@ -780,3 +780,17 @@ grep -n 'shairport nqptp' /srv/http/bash/settings/features.sh
 | `common.sh`, `settings/features.sh` | 모니터/nqptp 정리 로직 사라짐 |
 
 핫픽스는 **멱등**이라 업데이트 후 여러 번 실행해도 안전하다.
+
+### 12.1 Bluetooth 수신 패치 (선택)
+
+블루투스로 폰 오디오를 받을 때, 폰에서 연결하면 rAudio가 재생 모드로 전환되지 않는 경우가 있다.
+udev 훅이 `$dirshm/Connected`와 현재 목록을 diff하는데, 목록이 낡아 있으면 빈 diff로 종료하기 때문이다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/togobeyond/rAudio/<commit>/patches/bluetooth-connect-fix.sh -o /root/bluetooth-connect-fix.sh
+bash /root/bluetooth-connect-fix.sh
+```
+
+- diff가 비어 있으면 **현재 연결된 기기로 진행**하도록 fallback 추가
+- 멱등 (재실행 안전), 원본은 `/root/networks-bluetooth.sh.bak-*`에 백업
+- rAudio 업데이트 후 다시 실행 필요 (AirPlay 핫픽스와 동일)
